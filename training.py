@@ -29,7 +29,7 @@ class MLP(nn.Module): # smh, couldve jsut trained some parameters wtv tho
         return torch.softmax(x, dim=-1) 
         
         
-training_steps = 15000
+training_steps = 30000
 mlp_A = MLP(2, 2, 200) # probability of sampling heads, probability of sampling tails
 mlp_B = MLP(2, 2, 200)
 mlp_A_ref = copy.deepcopy(mlp_A)
@@ -39,7 +39,7 @@ sample_size = 5
 input = torch.zeros(2) # dummy, lowkey constant, not needed 
 
 eps = 1e-8
-eta = 0.1 # idk hyperparameter for KL updates
+eta = 10 # idk hyperparameter for KL updates
 history_A = []
 history_B = []
 
@@ -48,32 +48,38 @@ history_B = []
 optimizer_A = torch.optim.Adam(mlp_A.parameters(), lr=1e-3)
 optimizer_B = torch.optim.Adam(mlp_B.parameters(), lr=1e-3)
 for i in range(training_steps):
-    gen_A = mlp_A(input)
-    gen_B = mlp_B(input)
-    gen_A_ref = mlp_A_ref(input).detach()
-    gen_B_ref = mlp_B_ref(input).detach()
-    kl_A = gen_A * (torch.log(gen_A) - torch.log(gen_A_ref))
-    kl_B = gen_B * (torch.log(gen_B) - torch.log(gen_B_ref))
-    reward_A, reward_B, prob_A, prob_B= getreward(gen_A, gen_B)
-    # rewards_A = torch.tensor(reward_A, dtype=torch.float32) 
-    # rewards_B = torch.tensor(reward_B, dtype=torch.float32)
-    # probs_A = prob_A
-    # probs_B = prob_B
-        
+    rewards_A = []
+    rewards_B = []
+    probs_A = []
+    probs_B = []
+    kl_A = []
+    kl_B = []
+    for _ in range(sample_size):
+        gen_A = mlp_A(input)
+        gen_B = mlp_B(input)
+        gen_A_ref = mlp_A_ref(input).detach()
+        gen_B_ref = mlp_B_ref(input).detach()
+        kl_A.append(gen_A * (torch.log(gen_A) - torch.log(gen_A_ref)))
+        kl_B.append(gen_B * (torch.log(gen_B) - torch.log(gen_B_ref)))
+        reward_A, reward_B, prob_A, prob_B= getreward(gen_A, gen_B)
+        rewards_A.append(torch.tensor(reward_A, dtype=torch.float32))
+        rewards_B.append(torch.tensor(reward_B, dtype=torch.float32))
+        probs_A.append(prob_A)
+        probs_B.append(prob_B)
+            
+    rewards_A = torch.stack(rewards_A).detach() # detach graph
+    rewards_B =  torch.stack(rewards_B).detach()
     
-    # rewards_A = torch.stack(rewards_A).detach() # detach graph
-    # rewards_B =  torch.stack(rewards_B).detach()
-    
-    # probs_A = torch.stack(probs_A)  # preserve gradient graph,ldike so grad can floww
-    # probs_B = torch.stack(probs_B) 
-    # kl_A = torch.stack(kl_A)
-    # kl_B = torch.stack(kl_B)
+    probs_A = torch.stack(probs_A)  # preserve gradient graph,ldike so grad can floww
+    probs_B = torch.stack(probs_B) 
+    kl_A = torch.stack(kl_A)
+    kl_B = torch.stack(kl_B)
     
     
-    # rewards_A = (rewards_A - rewards_A.mean())/(rewards_A.std() + eps)
-    # rewards_B = (rewards_B - rewards_B.mean())/(rewards_B.std() + eps)
-    loss_A = -(reward_A * prob_A).mean() + eta * kl_A.sum(dim=-1) # each kl is initially 2 tensor
-    loss_B = -(reward_B * prob_B).mean() + eta * kl_B.sum(dim=-1)
+    rewards_A = (rewards_A - rewards_A.mean())/(rewards_A.std() + eps)
+    rewards_B = (rewards_B - rewards_B.mean())/(rewards_B.std() + eps)
+    loss_A = -(rewards_A * probs_A).mean() + eta * kl_A.sum(dim=-1).mean() # each kl is initially sample_size * 2 tensor
+    loss_B = -(rewards_B * probs_B).mean() + eta * kl_B.sum(dim=-1).mean()
     
     if((i+1) % 10 == 0):
         print(f"loss A: {loss_A} loss_B: {loss_B}")
@@ -88,7 +94,7 @@ for i in range(training_steps):
     optimizer_A.step()
     optimizer_B.step()
     
-    if (i+1) % 100 == 0:
+    if (i+1) % 500 == 0:
         mlp_A_ref = copy.deepcopy(mlp_A)
         mlp_B_ref = copy.deepcopy(mlp_B)
 
