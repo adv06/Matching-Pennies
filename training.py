@@ -29,7 +29,7 @@ class MLP(nn.Module): # smh, couldve jsut trained some parameters wtv tho
         return torch.softmax(x, dim=-1) 
         
         
-training_steps = 5000
+training_steps = 15000
 mlp_A = MLP(2, 2, 200) # probability of sampling heads, probability of sampling tails
 mlp_B = MLP(2, 2, 200)
 mlp_A_ref = copy.deepcopy(mlp_A)
@@ -87,6 +87,10 @@ for i in range(training_steps):
     loss_B.backward()
     optimizer_A.step()
     optimizer_B.step()
+    
+    if (i+1) % 100 == 0:
+        mlp_A_ref = copy.deepcopy(mlp_A)
+        mlp_B_ref = copy.deepcopy(mlp_B)
 
 plt.figure(figsize=(12, 5))
 plt.plot(history_A, label="Player A P(Heads)", alpha=0.7)
@@ -96,5 +100,5 @@ plt.xlabel("Training Step")
 plt.ylabel("P(Heads)")
 plt.title("Matching Pennies - Policy Convergence")
 plt.legend()
-plt.savefig("convergence.png")
+plt.savefig("convergence2.png")
 plt.show()
