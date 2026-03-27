@@ -1,11 +1,21 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F 
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
-def getreward(x):
-    return 0
-
-class MLP(nn.Module):
+def getreward(x, y): # b gets reward if diff, a gets  
+    
+    dist_A = torch.distributions.Categorical(x)
+    sample_A = dist_A.sample() 
+    dist_B =  torch.distributions.Categorical(y)
+    sample_B = dist_B.sample()
+    
+    if(sample_A == sample_B):
+        return 1, -1, dist_A.log_prob(sample_A), dist_B.log_prob(sample_B)
+    else:
+        return -1, 1, dist_A.log_prob(sample_A), dist_B.log_prob(sample_B)
+        
+class MLP(nn.Module): # smh, couldve jsut trained some parameters wtv tho
     def __init__(self, in_dim, out_dim, mlp_dim):
         super().__init__()
         self.fc1 = nn.Linear(in_dim, mlp_dim)
@@ -18,25 +28,65 @@ class MLP(nn.Module):
         return torch.softmax(x, dim=-1) 
         
         
-training_steps = 10000
-mlp = MLP(100, 100, 200)
+training_steps = 5000
+mlp_A = MLP(2, 2, 200) # probability of sampling heads, probability of sampling tails
+mlp_B = MLP(2, 2, 200)
 sample_size = 5
-input = torch.zeros(100)
-rewards = []
-probs= []
+input = torch.zeros(2) # dummy, lowkey constant, not needed 
+
 eps = 1e-8
-optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-8)
-for _ in range(training_steps):
+history_A = []
+history_B = []
+
+# remember --> if same, player A wins and if different, player B wins 
+
+optimizer_A = torch.optim.Adam(mlp_A.parameters(), lr=1e-3)
+optimizer_B = torch.optim.Adam(mlp_B.parameters(), lr=1e-3)
+for i in range(training_steps):
+    rewards_A = []
+    rewards_B = []
+    probs_A = []
+    probs_B = []
     for _ in range(sample_size):
-        gen = mlp(sample_size)
-        reward = getreward(gen) 
-        rewards.append(reward)
-        probs.append(gen)
+        gen_A = mlp_A(input)
+        gen_B = mlp_B(input)
+        reward_A, reward_B, prob_A, prob_B = getreward(gen_A, gen_B)
+        rewards_A.append(torch.tensor(reward_A, dtype=torch.float32))
+        rewards_B.append(torch.tensor(reward_B, dtype=torch.float32))
+        probs_A.append(prob_A)
+        probs_B.append(prob_B)
+        
     
-    rewards = torch.tensor(rewards)
-    probs = torch.tensor(probs) 
-    rewards = (rewards - rewards.mean())/(rewards.std() + eps)
-    loss = -(rewards * probs).mean()
-    optimizer.zero_grad() 
-    loss.backward()
-    optimizer.step()
+    rewards_A = torch.stack(rewards_A).detach()
+    rewards_B =  torch.stack(rewards_B).detach()
+    
+    probs_A = torch.stack(probs_A)  # preserve gradient graph,ldike so grad can floww
+    probs_B = torch.stack(probs_B) 
+    rewards_A = (rewards_A - rewards_A.mean())/(rewards_A.std() + eps)
+    rewards_B = (rewards_B - rewards_B.mean())/(rewards_B.std() + eps)
+    loss_A = -(rewards_A * probs_A).mean()
+    loss_B = -(rewards_B * probs_B).mean()
+    
+    if((i+1) % 10 == 0):
+        print(f"loss A: {loss_A} loss_B: {loss_B}")
+        print(f"Probs A: {probs_A} | Probs B: {probs_B}")
+    with torch.no_grad():
+        history_A.append(mlp_A(input)[0].item())
+        history_B.append(mlp_B(input)[0].item())
+    optimizer_A.zero_grad()
+    optimizer_B.zero_grad()
+    loss_A.backward()
+    loss_B.backward()
+    optimizer_A.step()
+    optimizer_B.step()
+
+plt.figure(figsize=(12, 5))
+plt.plot(history_A, label="Player A P(Heads)", alpha=0.7)
+plt.plot(history_B, label="Player B P(Heads)", alpha=0.7)
+plt.axhline(y=0.5, color='r', linestyle='--', label="Nash Equilibrium")
+plt.xlabel("Training Step")
+plt.ylabel("P(Heads)")
+plt.title("Matching Pennies - Policy Convergence")
+plt.legend()
+plt.savefig("convergence.png")
+plt.show()
