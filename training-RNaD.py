@@ -42,7 +42,10 @@ eps = 1e-8
 eta = 10 # idk hyperparameter for KL updates
 history_A = []
 history_B = []
-
+history_exploitable_A = []
+history_exploitable_B = []
+history_lyuponov_A = []
+history_lyuponov_B = []
 # remember --> if same, player A wins and if different, player B wins 
 
 optimizer_A = torch.optim.Adam(mlp_A.parameters(), lr=1e-3)
@@ -66,6 +69,17 @@ for i in range(training_steps):
         rewards_B.append(torch.tensor(reward_B, dtype=torch.float32))
         probs_A.append(prob_A)
         probs_B.append(prob_B)
+
+    with torch.no_grad():
+        pA = mlp_A(input)[0].item()
+        pB = mlp_B(input)[0].item()
+        exploit_A = max(2*pB - 1, 1 - 2*pB) - (pA * (2*pB - 1) + (1-pA) * (1 - 2*pB)) # max expected value playing heads vs tails vs current strategy
+        exploit_B = max(2*pA - 1, 1 - 2*pA) - (pB * (2*pA - 1) + (1-pB) * (1 - 2*pA))
+        history_exploitable_A.append(exploit_A)
+        history_exploitable_B.append(exploit_B)
+        history_lyuponov_A.append((0.5 * (torch.log(torch.tensor(0.5, dtype=torch.float32) ) - torch.log(gen_A))).sum())
+        history_lyuponov_B.append((0.5 * (torch.log(torch.tensor(0.5, dtype=torch.float32) ) - torch.log(gen_B))).sum())
+    
             
     rewards_A = torch.stack(rewards_A).detach() # detach graph
     rewards_B =  torch.stack(rewards_B).detach()
@@ -98,13 +112,32 @@ for i in range(training_steps):
         mlp_A_ref = copy.deepcopy(mlp_A)
         mlp_B_ref = copy.deepcopy(mlp_B)
 
-plt.figure(figsize=(12, 5))
-plt.plot(history_A, label="Player A P(Heads)", alpha=0.7)
-plt.plot(history_B, label="Player B P(Heads)", alpha=0.7)
-plt.axhline(y=0.5, color='r', linestyle='--', label="Nash Equilibrium")
-plt.xlabel("Training Step")
-plt.ylabel("P(Heads)")
-plt.title("Matching Pennies - Policy Convergence")
-plt.legend()
-plt.savefig("convergence2.png")
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 5))
+
+ax1.plot(history_A, label="Player A P(Heads)", alpha=0.7)
+ax1.plot(history_B, label="Player B P(Heads)", alpha=0.7)
+ax1.axhline(y=0.5, color='r', linestyle='--', label="Nash Equilibrium")
+ax1.set_xlabel("Training Step")
+ax1.set_ylabel("P(Heads)")
+ax1.set_title("Policy Convergence")
+ax1.legend()
+
+nashconv = [a + b for a, b in zip(history_exploitable_A, history_exploitable_B)]
+ax2.plot(nashconv, label="NashConv", alpha=0.7, color='purple')
+ax2.axhline(y=0.0, color='r', linestyle='--', label="Nash (0)")
+ax2.set_xlabel("Training Step")
+ax2.set_ylabel("Exploitability")
+ax2.set_title("NashConv (Exploitability)")
+ax2.legend()
+
+lyapunov = [a + b for a, b in zip(history_lyuponov_A, history_lyuponov_B)]
+ax3.plot(lyapunov, label="Lyapunov Potential", alpha=0.7, color='green')
+ax3.axhline(y=0.0, color='r', linestyle='--', label="Nash (0)")
+ax3.set_xlabel("Training Step")
+ax3.set_ylabel("KL(pi || uniform)")
+ax3.set_title("Lyapunov Potential Decay")
+ax3.legend()
+
+plt.tight_layout()
+plt.savefig("convergence_rnad.png")
 plt.show()
