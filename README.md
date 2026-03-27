@@ -35,10 +35,3 @@ R-NaD adds a KL divergence penalty toward a periodically-updated reference polic
 | P(Heads) range | 0.0 - 1.0 (wild swings) | 0.42 - 0.60 (near Nash) |
 | NashConv (exploitability) | Spikes to ~4.0 | Hovers around 0.05 - 0.15 |
 | Lyapunov potential | ~3.0 - 4.0 (no decay) | ~0.0 - 0.03 (near zero) |
-
-## Run
-
-```bash
-python training-vanilla.py   # Vanilla REINFORCE (cycling)
-python training-RNaD.py      # R-NaD (convergence)
-```
