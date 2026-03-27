@@ -39,7 +39,7 @@ sample_size = 5
 input = torch.zeros(2) # dummy, lowkey constant, not needed 
 
 eps = 1e-8
-eta = 10 # idk hyperparameter for KL updates
+eta = 10 # hyperparameter for KL updates
 history_A = []
 history_B = []
 history_exploitable_A = []
